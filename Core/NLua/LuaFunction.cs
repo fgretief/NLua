@@ -24,6 +24,7 @@
  * THE SOFTWARE.
  */
 using System;
+using System.Dynamic;
 using System.Text;
 using System.Collections.Generic;
 
@@ -39,7 +40,7 @@ namespace NLua
 	using LuaNativeFunction = KeraLua.LuaNativeFunction;
 	#endif
 
-	public class LuaFunction : LuaBase
+	public partial class LuaFunction : LuaBase
 	{
 		internal LuaNativeFunction function;
 
@@ -109,4 +110,15 @@ namespace NLua
 			return _Reference != 0 ? _Reference : function.GetHashCode ();
 		}
 	}
+
+#if !NET35
+    public partial class LuaFunction
+    {
+        public override bool TryInvoke(InvokeBinder binder, object[] args, out object result)
+        {
+            result = Call(args);
+            return true;
+        }
+    }
+#endif
 }

@@ -24,8 +24,10 @@
  * THE SOFTWARE.
  */
 using System;
+using System.Dynamic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Reflection;
 using System.Collections;
@@ -68,7 +70,7 @@ namespace NLua
 	 * - all libs automatically open in the Lua class constructor (just assign nil to unwanted libs)
 	 * */
 	[CLSCompliant(true)]
-	public class Lua : IDisposable
+	public partial class Lua : IDisposable
 	{
 		#region lua debug functions
 		/// <summary>
@@ -568,7 +570,7 @@ end
 					LuaLib.LuaGetGlobal (luaState, path [0]);
 					string[] remainingPath = new string[path.Length - 1];
 					Array.Copy (path, 1, remainingPath, 0, path.Length - 1);
-					SetObject (remainingPath, value);
+					SetObject (remainingPath, 0, value);
 				}
 
 				LuaLib.LuaSetTop (luaState, oldTop);
@@ -663,11 +665,12 @@ end
 			* Navigates a table in the top of the stack, returning
 			* the value of the specified field
 			*/
-		object GetObject (string[] remainingPath)
+		object GetObject (string[] remainingPath, int index = 0)
 		{
 			object returnValue = null;
 
-			for (int i = 0; i < remainingPath.Length; i++) {
+			for (int i = index; i < remainingPath.Length; i++) 
+            {
 				LuaLib.LuaPushString (luaState, remainingPath [i]);
 				LuaLib.LuaGetTable (luaState, -2);
 				returnValue = translator.GetObject (luaState, -1);
@@ -795,9 +798,9 @@ end
 		/*
 			* Navigates a table to set the value of one of its fields
 			*/
-		void SetObject (string[] remainingPath, object val)
+		void SetObject (string[] remainingPath, int startIndex, object val)
 		{
-			for (int i = 0; i < remainingPath.Length-1; i++) {
+			for (int i = startIndex; i < remainingPath.Length-1; i++) {
 				LuaLib.LuaPushString (luaState, remainingPath [i]);
 				LuaLib.LuaGetTable (luaState, -2);
 			}
@@ -1080,7 +1083,7 @@ end
 		{
 			int oldTop = LuaLib.LuaGetTop (luaState);
 			LuaLib.LuaGetRef (luaState, reference);
-			SetObject (FullPathToArray (field), val);
+			SetObject (FullPathToArray (field), 0, val);
 			LuaLib.LuaSetTop (luaState, oldTop);
 		}
 
@@ -1150,4 +1153,80 @@ end
 		}
 		#endregion
 	}
+
+#if !NET35
+    public partial class Lua : DynamicObject
+    {
+        public override bool TryInvoke(InvokeBinder binder, object[] args, out object result)
+        {
+            result = DoString(args[0].ToString());
+            return true;
+        }
+
+        public override bool TryGetMember(GetMemberBinder binder, out object result)
+        {
+            int oldTop = LuaLib.LuaGetTop(luaState);
+
+            string[] path = FullPathToArray(binder.Name);
+            
+            LuaLib.LuaGetGlobal(luaState, path[0]);
+            result = translator.GetObject(luaState, -1);
+
+            if (path.Length > 1)
+            {
+                var dispose = result as LuaBase;
+                result = GetObject(path, 1);
+                if (dispose != null)
+                    dispose.Dispose();
+            }
+
+            LuaLib.LuaSetTop(luaState, oldTop);
+            return true;
+        }
+
+        public override bool TrySetMember(SetMemberBinder binder, object value)
+        {
+            int oldTop = LuaLib.LuaGetTop(luaState);
+
+            string[] path = FullPathToArray(binder.Name);
+            
+            if (path.Length == 1)
+            {
+                translator.Push(luaState, value);
+                LuaLib.LuaSetGlobal(luaState, path[0]);
+            }
+            else
+            {
+                LuaLib.LuaGetGlobal(luaState, path[0]);
+                SetObject(path, 1, value);
+            }
+
+            LuaLib.LuaSetTop(luaState, oldTop);
+            return true;
+        }
+
+        public override bool TryGetIndex(GetIndexBinder binder, object[] indexes, out object result)
+        {
+            int oldTop = LuaLib.LuaGetTop(luaState);
+
+            string[] path = FullPathToArray(indexes[0].ToString());
+
+            LuaLib.LuaGetGlobal(luaState, path[0]);
+            result = translator.GetObject(luaState, -1);
+
+            if (path.Length > 1)
+            {
+                var dispose = result as LuaBase;
+                result = GetObject(path, 1);
+                if (dispose != null)
+                    dispose.Dispose();
+            }
+
+            LuaLib.LuaSetTop(luaState, oldTop);
+            return true;
+        }
+
+        // TODO: TrySetIndex
+    }
+#endif
 }

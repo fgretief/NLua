@@ -24,6 +24,7 @@
  * THE SOFTWARE.
  */
 using System;
+using System.Dynamic;
 using System.Text;
 using System.Collections.Generic;
 
@@ -37,7 +38,7 @@ namespace NLua
 	using LuaState = KeraLua.LuaState;
 	#endif
 
-	public class LuaUserData : LuaBase
+	public partial class LuaUserData : LuaBase
 	{
 		public LuaUserData (int reference, Lua interpreter)
 		{
@@ -84,4 +85,27 @@ namespace NLua
 			return "userdata";
 		}
 	}
+
+#if !NET35
+    public partial class LuaUserData
+    {
+        public override bool TryInvoke(InvokeBinder binder, object[] args, out object result)
+        {
+            result = Call(args);
+            return true;
+        }
+
+        public override bool TryGetMember(GetMemberBinder binder, out object result)
+        {
+            result = _Interpreter.GetObject(_Reference, binder.Name);
+            return true;
+        }
+
+        public override bool TrySetMember(SetMemberBinder binder, object value)
+        {
+            _Interpreter.SetObject(_Reference, binder.Name, value);
+            return true;
+        }        
+    }
+#endif
 }

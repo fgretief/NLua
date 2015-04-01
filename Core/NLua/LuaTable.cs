@@ -24,6 +24,7 @@
  * THE SOFTWARE.
  */
 using System;
+using System.Dynamic;
 using System.Text;
 using System.Collections;
 using System.Collections.Generic;
@@ -46,7 +47,7 @@ namespace NLua
 	 * Author: Fabio Mascarenhas
 	 * Version: 1.0
 	 */
-	public class LuaTable : LuaBase
+	public partial class LuaTable : LuaBase
 	{
 		public LuaTable (int reference, Lua interpreter)
 		{
@@ -113,4 +114,27 @@ namespace NLua
 			return "table";
 		}
 	}
+
+#if !NET35
+    public partial class LuaTable
+    {
+        public override bool TryInvoke(InvokeBinder binder, object[] args, out object result)
+        {
+            result = _Interpreter.CallFunction(this, args);
+            return true;
+        }
+
+        public override bool TryGetMember(GetMemberBinder binder, out object result)
+        {
+            result = _Interpreter.GetObject(_Reference, binder.Name);
+            return true;
+        }
+
+        public override bool TrySetMember(SetMemberBinder binder, object value)
+        {
+            _Interpreter.SetObject(_Reference, binder.Name, value);
+            return true;
+        }
+    }
+#endif
 }

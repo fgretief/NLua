@@ -24,15 +24,17 @@
  * THE SOFTWARE.
  */
 using System;
-using System.Text;
+using System.Collections;
+using System.Dynamic;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace NLua
 {
 	/// <summary>
 	/// Base class to provide consistent disposal flow across lua objects. Uses code provided by Yves Duhoux and suggestions by Hans Schmeidenbacher and Qingrui Li 
 	/// </summary>
-	public abstract class LuaBase : IDisposable
+	public abstract partial class LuaBase : IDisposable
 	{
 		private bool _Disposed;
 		[CLSCompliantAttribute(false)]
@@ -80,4 +82,126 @@ namespace NLua
 			return _Reference;
 		}
 	}
+
+#if !NET35
+    public partial class LuaBase : DynamicObject
+    {
+    }
+
+    public class DynamicArray : DynamicObject, IEnumerable<object>, IEnumerable<string>
+    {
+        private readonly object[] _array;
+
+        internal DynamicArray(object[] array)
+        {
+            _array = array ?? new object[0];
+        }
+
+        public object this[int index]
+        { 
+            get { return _array[index]; }
+        }
+       
+        public int Length
+        {
+            get { return _array.Length; }
+        }
+
+        public override string ToString()
+        {
+            if (_array.Length == 1)
+                return _array[0].ToString();
+
+            return _array.ToString();
+        }
+
+        public static implicit operator object[](DynamicArray d)
+        {
+            return d._array;
+        }
+
+        public override bool TryGetMember(GetMemberBinder binder, out object result)
+        {
+            result = null;
+
+            int index;
+            if (!int.TryParse(binder.Name, out index))
+                return false;
+            if (index >= _array.Length)
+                return false;
+
+            result = _array[index];
+            return true;
+        }
+
+        public override bool TryGetIndex(GetIndexBinder binder, object[] indexes, out object result)
+        {
+            result = null;
+
+            int index;
+            if (!int.TryParse(indexes[0].ToString(), out index))
+                return false;
+            if (index >= _array.Length)
+                return false;
+
+            result = _array[index];
+            return true;
+        }
+
+        public override bool TryConvert(ConvertBinder binder, out object result)
+        {
+            result = null;
+
+            if (binder.Type == typeof(object[]))
+            {
+                result = _array;
+                return true;
+            }
+
+            if (_array.Length != 1)
+                return false;
+
+            if (_array[0] is LuaTable || _array[0] is LuaFunction)
+            {
+                result = _array[0];
+                return true;
+            }
+
+            if (_array[0].GetType() != binder.Type)
+                return false;
+
+            result = Convert.ChangeType(_array[0], binder.Type);
+            return true;
+        }
+
+        public override IEnumerable<string> GetDynamicMemberNames()
+        {
+            for (int i = 0; i < _array.Length; ++i)
+            {
+                yield return i.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+
+        IEnumerator<string> IEnumerable<string>.GetEnumerator()
+        {
+            for (int i = 0; i < _array.Length; ++i)
+            {
+                yield return _array[i].ToString();
+            }
+        }
+
+        IEnumerator<object> IEnumerable<object>.GetEnumerator()
+        {
+            for (int i = 0; i < _array.Length; ++i)
+            {
+                yield return _array[i];
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return _array.GetEnumerator();
+        }
+    }
+#endif
 }
